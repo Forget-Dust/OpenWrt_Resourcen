@@ -1,0 +1,36 @@
+name: Clean Old Workflows&Releases
+on:
+#  schedule:
+#    - cron: '0 0 * * *'
+#      timezone: 'Asia/Shanghai'
+  workflow_dispatch:
+
+permissions:
+  actions: write
+  contents: write
+
+jobs:
+  cleanup:
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Delete Old Workflow Runs (Each Workflow → Keep Latest 1)
+        uses: Mattraks/delete-workflow-runs@v2
+        with:
+          token: ${{ github.token }}
+          repository: ${{ github.repository }}
+          retain_days: 0
+          keep_minimum_runs: 1
+          # 清所有工作流
+          delete_workflow_pattern: ""
+
+      - name: Delete old releases (keep latest 1)
+        uses: dev-drprasad/delete-older-releases@v0.3.2
+        env:
+          GITHUB_TOKEN: ${{ github.token }}
+        with:
+          repo: ${{ github.repository }}
+          keep_latest: 10
+          delete_tags: true
+          # 清带某前缀
+          delete_tag_pattern: ""

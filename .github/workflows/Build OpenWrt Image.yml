@@ -1,0 +1,86 @@
+name: Build OpenWrt Image
+on:
+#  schedule:
+#    - cron: '0 0 * * *'
+#      timezone: 'Asia/Shanghai'
+  workflow_dispatch:
+    inputs:
+      version:
+        description: "目标版本"
+        required: true
+        type: choice
+        default: "24"
+        options:
+          - 24
+          - 25
+
+permissions:
+  actions: write
+  contents: write
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    strategy:
+      matrix:
+        include:
+          - arch_ui: x86-64
+            arch_owrt: x86/64
+          - arch_ui: armsr-armv8
+            arch_owrt: armsr/armv8
+
+    steps:
+      - uses: actions/checkout@v4
+      - name: Packaging OpenWrt
+        run: |
+          echo "====》Install Program..."
+            packages=(aria2 curl tar zstd make unzip)
+            sudo apt-get -qq update && for pkg in "${packages[@]}"; do sudo apt-get install -qq -fy $pkg ;done
+
+          echo "====》Set Variables..."
+            dir=$(pwd)
+            openwrt="https://downloads.openwrt.org"
+            script_path="${dir}/files/etc/uci-defaults"
+            download="aria2c -c -R -x 8 -s 8 -k 1M --file-allocation=none --check-certificate=false"
+            versions=$(curl -sfSL "${openwrt}/.versions.json" | grep "stable_version" | grep -oE "${{ inputs.version }}[^\"]+")
+            imagebuilder=$(curl -sfSL "${openwrt}/releases/${versions}/targets/${{ matrix.arch_owrt }}" | grep -oE "openwrt-imagebuilder[^\"]+" | head -1)
+            luci_packages="luci luci-ssl luci-compat luci-i18n-base-zh-cn luci-i18n-attendedsysupgrade-zh-cn luci-i18n-package-manager-zh-cn luci-i18n-firewall-zh-cn"
+
+          echo "====》Download OpenWrt..."
+            ${download} "${openwrt}/releases/${versions}/targets/${{ matrix.arch_owrt }}/${imagebuilder}" && rm -rf ${imagebuilder%.tar.zst} && tar --zstd -xf ${imagebuilder} && cd ${imagebuilder%.tar.zst}
+
+          echo "====》Custom script..."
+            mkdir -p ${script_path} && echo -e "#!/bin/sh\n# 关闭 lan 侧 DHCP server\nuci set dhcp.lan.ignore='1'\n# 删除并重新创建 lan\nuci -q delete network.lan\nuci set network.lan='interface'\nuci set network.lan.proto='dhcp'\nuci set network.lan.device='br-lan'" >> ${script_path}/90-diy
+            echo -e "# 删除并重新创建 lan6\nuci -q delete network.lan6\nuci set network.lan6='interface'\nuci set network.lan6.proto='dhcpv6'\nuci set network.lan6.reqprefix='no'\nuci set network.lan6.device='@lan'\nuci set network.lan6.reqaddress='try'" >> ${script_path}/90-diy
+            echo -e "# 设置时区\nuci set system.@system[0].timezone='CST-8'\nuci set system.@system[0].zonename='Asia/Shanghai'\n# 提交配置并应用\nuci commit dhcp\nuci commit system\nuci commit network\n/etc/init.d/network reload\nexit 0" >> ${script_path}/90-diy
+
+          echo "====》Custom Program..."
+            expansion="zram-swap ca-bundle curl e2fsprogs fdisk lsblk parted block-mount htop"
+            if [ "${{ inputs.version }}" = "25" ];then sed -i '$a\' repositories*  && expansion25="" ;fi
+            if [ "${{ inputs.version }}" = "24" ];then sed -i 's/^option check_signature/#option check_signature/g;$a\src/gz istore_store https://istore.istoreos.com/repo/all/store\nsrc/gz imopenwrt_luci https://downloads.immortalwrt.org/releases/packages-24.10/x86_64/luci' repositories*  && expansion24="luci-app-store luci-i18n-diskman-zh-cn luci-i18n-argon-config-zh-cn" ;fi
+
+          echo "====》Build OpenWrt..."
+            cat repositories* && make image ROOTFS_PARTSIZE=512 FILES="${dir}/files" BIN_DIR="${dir}/out" PACKAGES="${luci_packages} ${expansion} ${expansion24} ${expansion25}"
+
+      - name: Prepare release assets
+        run: |
+          mkdir -p Release && shopt -s nullglob
+          f=( out/*.img.gz out/*.bin ) && (( ${#f[@]} )) || { echo "!!! No Files*" ;exit 1 ;}
+          cp -v "${f[@]}" Release/ && find Release -type f -size 0 -print -delete && echo "bjtime=$(TZ='Asia/Shanghai' date '+%Y-%m-%d %H:%M:%S')" >> "$GITHUB_ENV"
+
+      - name: Publish to GitHub Release
+        uses: softprops/action-gh-release@v2
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        with:
+          tag_name: OpenWrt-Image
+          name: OpenWrt-Image
+          draft: false
+          prerelease: false
+          make_latest: false
+          overwrite_files: true
+          fail_on_unmatched_files: true
+          files: |
+            Release/**
+          body: |
+            *Latest Sync：`${{ env.bjtime }} CST`*
