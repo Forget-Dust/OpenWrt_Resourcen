@@ -39,9 +39,9 @@ jobs:
 
           echo "====》Set Variables..."
             dir=$(pwd)
+            download="wget -q -nc --show-progress"
             openwrt="https://downloads.openwrt.org"
             script_path="${dir}/files/etc/uci-defaults"
-            download="aria2c -c -R -x 8 -s 8 -k 1M --file-allocation=none --check-certificate=false"
             versions=$(curl -sfSL "${openwrt}/.versions.json" | grep "stable_version" | grep -oE "${{ inputs.version }}[^\"]+")
             imagebuilder=$(curl -sfSL "${openwrt}/releases/${versions}/targets/${{ matrix.arch_owrt }}" | grep -oE "openwrt-imagebuilder[^\"]+" | head -1)
             luci_packages="luci luci-ssl luci-compat luci-i18n-base-zh-cn luci-i18n-attendedsysupgrade-zh-cn luci-i18n-package-manager-zh-cn luci-i18n-firewall-zh-cn"
@@ -59,16 +59,8 @@ jobs:
             if [ "${{ inputs.version }}" = "25" ];then sed -i '$a\' repositories*  && expansion25="" ;fi
             if [ "${{ inputs.version }}" = "24" ];then sed -i 's/^option check_signature/#option check_signature/g;$a\src/gz istore_store https://istore.istoreos.com/repo/all/store\nsrc/gz imopenwrt_luci https://downloads.immortalwrt.org/releases/packages-24.10/x86_64/luci' repositories*  && expansion24="luci-app-store luci-i18n-diskman-zh-cn luci-i18n-argon-config-zh-cn" ;fi
 
-          echo "====》Download Program..."
-            wget="wget -q -nc --show-progress -P ${dir}/packages"
-            ${wget} https://dl.openwrt.ai/packages-24.10/x86_64/kiddin9/quickstart_0.11.13-r33_x86_64.ipk
-            ${wget} https://dl.openwrt.ai/packages-24.10/x86_64/kiddin9/luci-app-quickstart_0.12.4-r1-r30_all.ipk
-            ${wget} https://dl.openwrt.ai/packages-24.10/aarch64_generic/kiddin9/quickstart_0.11.13-r33_aarch64_generic.ipk
-            ${wget} https://dl.openwrt.ai/packages-24.10/x86_64/kiddin9/unishare_1.1.2-r8_all.ipk
-            ${wget} https://dl.openwrt.ai/packages-24.10/x86_64/kiddin9/luci-app-unishare_1.0.1-r1-r4_all.ipk
-
           echo "====》Build OpenWrt..."
-            cat repositories* && make image FILES="${dir}/files" BIN_DIR="${dir}/out" PACKAGES="${luci_packages} ${expansion} ${expansion24} ${expansion25}" PACKAGE_DIR="${dir}/packages" ROOTFS_PARTSIZE=512
+            cat repositories* && make image FILES="${dir}/files" BIN_DIR="${dir}/out" PACKAGES="${luci_packages} ${expansion} ${expansion24} ${expansion25}" ROOTFS_PARTSIZE=512
 
       - name: Prepare release assets
         run: |
