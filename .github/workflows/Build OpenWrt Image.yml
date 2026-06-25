@@ -60,7 +60,7 @@ jobs:
             if [ "${{ inputs.version }}" = "24" ];then sed -i 's/^option check_signature/#option check_signature/g;$a\src/gz istore_store https://istore.istoreos.com/repo/all/store\nsrc/gz imopenwrt_luci https://downloads.immortalwrt.org/releases/packages-24.10/x86_64/luci' repositories*  && expansion24="luci-app-store luci-i18n-diskman-zh-cn luci-i18n-argon-config-zh-cn" ;fi
 
           echo "====》Build OpenWrt..."
-            cat repositories* && make image ROOTFS_PARTSIZE=512 FILES="${dir}/files" BIN_DIR="${dir}/out" PACKAGES="${luci_packages} ${expansion} ${expansion24} ${expansion25}"
+            cat repositories* && make image FILES="${dir}/files" BIN_DIR="${dir}/out" PACKAGES="${luci_packages} ${expansion} ${expansion24} ${expansion25}" PACKAGE_DIR="${dir}/packages" ROOTFS_PARTSIZE=512
 
       - name: Prepare release assets
         run: |
